@@ -1,0 +1,2 @@
+# spinalfuzz
+Fuzzing for SpinalHDL
