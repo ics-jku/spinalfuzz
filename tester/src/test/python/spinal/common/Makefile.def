@@ -1,6 +1,0 @@
-TOPLEVEL_LANG ?= verilog
-
-# ghdl specific args
-ifeq ($(TOPLEVEL_LANG),vhdl)
-	SIM_ARGS += --ieee-asserts=disable
-endif
