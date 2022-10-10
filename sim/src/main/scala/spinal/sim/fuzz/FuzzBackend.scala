@@ -226,8 +226,8 @@ public:
     Verilated::randReset(2);
     // Initialize DUT
     top = new V${config.toplevelName}();
-    top->pp = pp;
-    cout << "postprocessing: " << top->pp << "\\n";
+${ if (config.withCrashes) s"""    top->pp = pp;
+    cout << "postprocessing: " << top->pp << "\\n";""" else ""}
 
 ${ if (config.withWave) s"""#ifdef VM_TRACE
     if (pp) {
@@ -380,8 +380,8 @@ ${if (config.withInputCombined) "}" else ""}
 ${if (withSleepStatement) s"""      uint8_t cnt;
       cin.read(reinterpret_cast<char*>(&cnt), sizeof(cnt));
       nextCycle(&top->clk,cnt);
-      cout << "Sleep for " << (int)cnt << " cycles \n";
-""" else """      cout << "Sleep for 1 cycle \n";"""}
+      cout << "Sleep for " << (int)cnt << " cycles \\n";
+""" else """      cout << "Sleep for 1 cycle \\n";"""}
 ${if (withSleepStatement) {
    val clkNext = for (clk <- config.clockNames)
        yield s"    nextCycle(&top->$clk,cnt);\n"
@@ -391,6 +391,7 @@ ${if (withSleepStatement) {
        yield s"    nextCycle(&top->$clk,1);\n"
    clkNext.mkString("") }
 }
+      if(pp) printInputs();
     }
 
 ${val tmp = if (config.withFileMode) "    file_in.close();" else "// using cin to read testcase"
@@ -400,14 +401,7 @@ ${val tmp = if (config.withFileMode) "    file_in.close();" else "// using cin t
   }
 
   bool nextCycle (vluint8_t* clk, int count=1) {
-    bool ret = nextHalfCycle(clk, count*2);
-    if (pp) VL_PRINTF("[%" VL_PRI64 "d] clk=%x rst=%x${val sigs = config.signalsToFuzz.keys
-val inputStruct = for ((name) <- sigs)
-      yield s""" $name=%x"""
-  inputStruct.mkString("")}/n", mainTime, top->clk, top->reset${val inputStruct = for ((name) <- config.signalsToFuzz.keys)
-      yield s""", top->$name"""
-  inputStruct.mkString("")});
-    return ret;
+    return nextHalfCycle(clk, count*2);
   }
 
 private:
@@ -423,6 +417,34 @@ private:
   // current simulation time
   vluint64_t mainTime;
   
+  bool printInputs () {
+    bool ret = false;
+    VL_PRINTF("[%" VL_PRI64 "d] clk=%x rst=%x", mainTime/2, top->clk, top->reset);
+    for (int id=0;id<inputSignals.size();id++) {
+      int64_t value = 0;
+      switch (inputSignals[id].size) {
+      case sizeof(CData):
+        value = *static_cast<CData*>(inputSignals[id].pvar);
+        break;
+      case sizeof(SData):
+        value = *static_cast<SData*>(inputSignals[id].pvar);
+        break;
+      case sizeof(IData):
+        value = *static_cast<IData*>(inputSignals[id].pvar);
+        break; 
+      case sizeof(QData):
+        value = *static_cast<QData*>(inputSignals[id].pvar);
+        break;
+      default:
+        cout << "Invalid dataformat \\n";
+        ret = false;
+      } 
+      VL_PRINTF(" %s=%lx", inputSignals[id].name.c_str(), value);
+    }
+    VL_PRINTF("\\n");
+    return ret;
+  } 
+
   bool nextHalfCycle (vluint8_t* clk, int count=1) {
     for (int i = 0; i < count; i++) {
       *clk = !*clk;
@@ -934,7 +956,7 @@ if [ ! -z "$$(ls -A fuzz/default/crashes)" ]; then
        mv wave.vcd cov/crashes/wave$$ID.vcd
        
        verilator_coverage --annotate cov/crashes/annotation cov/crashes/coverage$$ID.dat
-       mv cov/crashes/annotation/${config.toplevelName}.v cov/crashes/annotation/Apb3Timer_crash$$ID.v
+       mv cov/crashes/annotation/${config.toplevelName}.v cov/crashes/annotation/${config.toplevelName}_crash$$ID.v
        ID=$$((ID+1))
    done
 fi
